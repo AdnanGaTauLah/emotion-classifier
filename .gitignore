@@ -4,3 +4,6 @@
 .env
 *.pth
 *.bin
+/results
+/models
+/wandb

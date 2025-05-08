@@ -1,0 +1,20 @@
+project: emotion-classifier-meld
+entity: adnanfatawi-electronic-engineering-polytechnic-institute
+program: train.py
+method: bayes
+metric:
+  name: eval/f1
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.00001  # Must use standard decimal notation
+    max: 0.0005
+    distribution: uniform
+  batch_size:
+    values: [16, 32, 64]
+  num_train_epochs:
+    min: 3
+    max: 5
+    distribution: int_uniform
+  model_name:
+    values: ["roberta-base", "distilbert-base-uncased"]

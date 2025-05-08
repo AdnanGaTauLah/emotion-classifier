@@ -1,0 +1,10 @@
+# test_sweep.yaml
+method: random
+metric:
+  name: eval/accuracy
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.0001
+    distribution: uniform
