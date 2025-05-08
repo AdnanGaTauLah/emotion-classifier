@@ -1,0 +1,6 @@
+/emotion-env
+/__pycache__
+*.pyc
+.env
+*.pth
+*.bin
