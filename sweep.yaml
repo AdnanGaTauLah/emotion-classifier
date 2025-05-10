@@ -1,6 +1,9 @@
 project: emotion-classifier-meld
 entity: adnanfatawi-electronic-engineering-polytechnic-institute
-program: train.py
+program: emotion-env\Scripts\python.exe
+command:
+  - ${program}
+  - train.py
 method: bayes
 metric:
   name: eval/f1
@@ -13,8 +16,8 @@ parameters:
   batch_size:
     values: [16, 32, 64]
   num_train_epochs:
-    min: 3
-    max: 5
+    min: 1
+    max: 2
     distribution: int_uniform
   model_name:
     values: ["roberta-base", "distilbert-base-uncased"]

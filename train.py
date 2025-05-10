@@ -53,11 +53,10 @@ def train():
 
     for fold, (train_idx, val_idx) in enumerate(splits):
         wandb.init(
-            project="emotion-classifier",
-            config={
-                "model": args.model_name,
-                "dataset": "MELD",
-                "epochs": args.epochs,
+            project="emotion-classifier-meld",
+            entity="adnanfatawi-electronic-engineering-polytechnic-institute",
+            config={  # Automatically populated by sweep
+                "model_name": args.model_name,
                 "fold": fold
             },
             name=f"{args.model_name}-fold-{fold}-{datetime.now().strftime('%m%d-%H%M')}",
@@ -73,15 +72,17 @@ def train():
             id2label=id2label,
             label2id=label2id
         )
+        
+        config = wandb.config
 
         training_args = TrainingArguments(
             output_dir=f"./results/fold_{fold}",
             eval_strategy="epoch",
             save_strategy="epoch",
-            learning_rate=2e-5,
-            per_device_train_batch_size=32,
+            learning_rate=config.learning_rate,
+            per_device_train_batch_size=config.batch_size,
             per_device_eval_batch_size=64,
-            num_train_epochs=args.epochs,
+            num_train_epochs=config.num_train_epochs,
             weight_decay=0.01,
             load_best_model_at_end=True,
             metric_for_best_model="f1",
