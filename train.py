@@ -1,8 +1,9 @@
 import os
 import numpy as np
 import torch
+import pandas as pd
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
@@ -21,12 +22,33 @@ NUM_FOLDS = 2
 SEED = 42
 EARLY_STOPPING_PATIENCE = 2
 
-def compute_metrics(p):
-    preds = np.argmax(p.predictions, axis=1)
-    return {
-        "accuracy": accuracy_score(p.label_ids, preds),
-        "f1": f1_score(p.label_ids, preds, average="weighted")
-    }
+def compute_metrics_builder(metrics_log, fold):
+    def compute_metrics(p):
+        preds = np.argmax(p.predictions, axis=1)
+        acc = accuracy_score(p.label_ids, preds)
+        prec = precision_score(p.label_ids, preds, average="weighted", zero_division=0)
+        rec = recall_score(p.label_ids, preds, average="weighted", zero_division=0)
+        f1 = f1_score(p.label_ids, preds, average="weighted")
+
+        epoch = trainer.state.epoch if trainer.state.epoch is not None else -1
+
+        # Store current metrics
+        metrics_log.append({
+            "fold": fold,
+            "epoch": epoch,
+            "accuracy": acc,
+            "precision": prec,
+            "recall": rec,
+            "f1": f1
+        })
+
+        return {
+            "accuracy": acc,
+            "precision": prec,
+            "recall": rec,
+            "f1": f1
+        }
+    return compute_metrics
 
 def train():
     parser = argparse.ArgumentParser()
@@ -46,19 +68,17 @@ def train():
     train_data = train_data.map(lambda e: {"label": label2id[e["label"]]})
     test_data = test_data.map(lambda e: {"label": label2id[e["label"]]})
 
-    # Cross-validation setup
     labels = train_data["label"]
     skf = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True, random_state=SEED)
     splits = skf.split(np.zeros(len(labels)), labels)
+
+    os.makedirs("logs/metrics", exist_ok=True)
 
     for fold, (train_idx, val_idx) in enumerate(splits):
         wandb.init(
             project="emotion-classifier-meld",
             entity="adnanfatawi-electronic-engineering-polytechnic-institute",
-            config={  # Automatically populated by sweep
-                "model_name": args.model_name,
-                "fold": fold
-            },
+            config={"model_name": args.model_name, "fold": fold},
             name=f"{args.model_name}-fold-{fold}-{datetime.now().strftime('%m%d-%H%M')}",
             reinit=True
         )
@@ -74,6 +94,7 @@ def train():
         )
         
         config = wandb.config
+        metrics_log = []
 
         training_args = TrainingArguments(
             output_dir=f"./results/fold_{fold}",
@@ -94,19 +115,26 @@ def train():
             hub_model_id=f"{args.model_name}-meld-fold-{fold}"
         )
 
+        global trainer  # Needed so compute_metrics can access current epoch
         trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=fold_train,
             eval_dataset=fold_val,
-            compute_metrics=compute_metrics,
+            compute_metrics=compute_metrics_builder(metrics_log, fold),
             callbacks=[EarlyStoppingCallback(early_stopping_patience=EARLY_STOPPING_PATIENCE)]
         )
 
         trainer.train()
+
+        # Save metrics log to CSV
+        pd.DataFrame(metrics_log).to_csv(f"logs/metrics/fold_{fold}_metrics.csv", index=False)
+
+        # Save model/tokenizer
         trainer.save_model(f"./models/fold_{fold}")
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         tokenizer.save_pretrained(f"./models/fold_{fold}")
+
         wandb.finish()
 
 if __name__ == "__main__":
