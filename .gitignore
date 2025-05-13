@@ -4,8 +4,9 @@
 .env
 *.pth
 *.bin
+*.npy
 /results
 /models
 /wandb
 request.py
-/data
+/data/processed
