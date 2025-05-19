@@ -57,6 +57,14 @@ def train():
     parser.add_argument("--push_to_hub", action="store_true")
     args = parser.parse_args()
 
+    # Check GPU availability
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    if device == "cpu":
+        print("Warning: Running on CPU. This will be significantly slower than GPU training.")
+        # Adjust batch size for CPU
+        args.batch_size = min(args.batch_size, 8)
+
     # Load data
     train_data = load_from_disk("data/processed/train")
     test_data = load_from_disk("data/processed/test")
