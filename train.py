@@ -65,8 +65,8 @@ def train():
     id2label = {i: label for label, i in label2id.items()}
 
     # Map string labels to IDs
-    #train_data = train_data.map(lambda e: {"label": label2id[e["label"]]})#
-    #test_data = test_data.map(lambda e: {"label": label2id[e["label"]]})#
+    train_data = train_data.map(lambda e: {"label": label2id[e["label"]]})
+    test_data = test_data.map(lambda e: {"label": label2id[e["label"]]})
 
     labels = train_data["label"]
     skf = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True, random_state=SEED)
