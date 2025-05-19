@@ -60,6 +60,9 @@ def train():
     # Check GPU availability
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
+    if device == "cuda":
+        print(f"GPU Device: {torch.cuda.get_device_name(0)}")
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
     if device == "cpu":
         print("Warning: Running on CPU. This will be significantly slower than GPU training.")
         # Adjust batch size for CPU
