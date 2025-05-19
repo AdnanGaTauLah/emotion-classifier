@@ -2,7 +2,7 @@ from flask import Flask, request, Response
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 
 app = Flask(__name__)
-model = AutoModelForSequenceClassification.from_pretrained("./results/fold_0/checkpoint-87")
+model = AutoModelForSequenceClassification.from_pretrained("./results/fold_0/checkpoint-1252")
 tokenizer = AutoTokenizer.from_pretrained("roberta-base")
 classifier = pipeline("text-classification", model=model, tokenizer=tokenizer)
 
