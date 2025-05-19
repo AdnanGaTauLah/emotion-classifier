@@ -2,7 +2,7 @@ from flask import Flask, request, Response
 from transformers import pipeline
 
 app = Flask(__name__)
-classifier = pipeline("text-classification", model="./results/fold_0")
+classifier = pipeline("text-classification", model="./results/fold_0/checkpoint-1252")
 
 @app.route('/predict', methods=['POST', 'GET'])
 def predict():
