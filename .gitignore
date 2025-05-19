@@ -10,3 +10,4 @@
 /wandb
 request.py
 /data/processed
+/env
