@@ -6,16 +6,14 @@ classifier = pipeline("text-classification", model="./models/fold_0")
 
 @app.route('/predict', methods=['POST', 'GET'])
 def predict():
-    # Get input text
-    text = request.args.get('text', '') if request.method == 'GET' else request.data.decode('utf-8').strip()
-    
+    text = request.args.get('text', '').strip() if request.method == 'GET' else request.data.decode('utf-8').strip()
+
     if not text:
         return Response("ERROR: No text provided", status=400, mimetype='text/plain')
-    
+
     try:
-        result = classifier(text)[0]
-        # Return ONLY the emotion (e.g. "joy")
-        return Response(result['label'], mimetype='text/plain')
+        emotion = classifier(text)[0]['label']
+        return Response(emotion, mimetype='text/plain')
     except Exception as e:
         return Response(f"ERROR: {str(e)}", status=500, mimetype='text/plain')
 
