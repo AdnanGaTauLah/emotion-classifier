@@ -1,8 +1,10 @@
 from flask import Flask, request, Response
-from transformers import pipeline
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 
 app = Flask(__name__)
-classifier = pipeline("text-classification", model="./results/fold_0/checkpoint-1252")
+model = AutoModelForSequenceClassification.from_pretrained("./results/fold_0/checkpoint-87")
+tokenizer = AutoTokenizer.from_pretrained("roberta-base")
+classifier = pipeline("text-classification", model=model, tokenizer=tokenizer)
 
 @app.route('/predict', methods=['POST', 'GET'])
 def predict():
