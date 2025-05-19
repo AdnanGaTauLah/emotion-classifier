@@ -17,7 +17,7 @@ from datetime import datetime
 
 # Config
 DEFAULT_MODEL_NAME = "roberta-base"
-NUM_FOLDS = 2
+NUM_FOLDS = 10
 SEED = 42
 EARLY_STOPPING_PATIENCE = 2
 
@@ -51,7 +51,7 @@ def compute_metrics_builder(metrics_log, fold):
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default=DEFAULT_MODEL_NAME)
-    parser.add_argument("--epochs", type=int, default=2)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--learning_rate", type=float, default=2e-5)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--push_to_hub", action="store_true")
