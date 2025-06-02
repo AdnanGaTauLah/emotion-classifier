@@ -124,5 +124,5 @@ if __name__ == "__main__":
         dev_csv_path=os.path.join(base_data_path, "dev_sent_emo.csv"),
         test_csv_path=os.path.join(base_data_path, "test_sent_emo.csv"),
         model_name="answerdotai/ModernBERT-large",
-        output_dir="./modernBERT/processed_data_kfold" # Output directory for k-fold ready data
+        output_dir="./processed_data_kfold" # Output directory for k-fold ready data
     )
