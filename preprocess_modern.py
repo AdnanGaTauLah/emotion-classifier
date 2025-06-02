@@ -94,10 +94,11 @@ def preprocess_meld_data_for_kfold(
 
     print("Tokenizing and mapping labels for the dataset splits...")
     # Apply tokenization and label mapping to all splits
+    # CORRECTED: Removed '__index_level_0__' from remove_columns
     tokenized_datasets = raw_datasets.map(
         tokenize_function,
         batched=True,
-        remove_columns=['Utterance', 'Emotion', 'label', '__index_level_0__'] # '__index_level_0__' is added by from_pandas
+        remove_columns=['Utterance', 'Emotion', 'label']
     )
 
     # Save the processed datasets and label mappings
