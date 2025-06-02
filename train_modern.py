@@ -1,4 +1,4 @@
-# train.py
+# train.py (Updated for fp16 RuntimeError fix with bitsandbytes)
 import argparse
 import json
 import os
@@ -14,7 +14,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, TaskType
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
-from sklearn.model_selection import KFold # Import KFold
+from sklearn.model_selection import KFold
 
 def compute_metrics(p):
     """
@@ -35,24 +35,24 @@ def compute_metrics(p):
 
 def train_modernbert_kfold(
     model_name: str = "answerdotai/ModernBERT-large",
-    processed_data_dir: str = "./modernBERT/processed_data_kfold", # Updated to k-fold output
-    output_dir: str = "./modernBERT_model/model_output_kfold",       # Updated output directory
+    processed_data_dir: str = "./processed_data_kfold",
+    output_dir: str = "./model_output_kfold",
     num_epochs: int = 3,
     batch_size: int = 8,
     learning_rate: float = 2e-5,
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.1,
-    num_folds: int = 5, # New parameter for number of folds
-    seed: int = 42 # New parameter for reproducibility
+    num_folds: int = 5,
+    seed: int = 42
 ):
     """
     Trains ModernBERT-large for emotion classification using PEFT (LoRA)
     and 4-bit quantization with k-fold cross-validation.
+    Includes enhanced logging per epoch/fold and saves the best model for each fold.
     """
     print(f"Loading processed data from {processed_data_dir}...")
     try:
-        # Load the merged train dataset for k-fold and the separate test dataset
         full_train_dataset = load_from_disk(os.path.join(processed_data_dir, "train"))
         test_dataset = load_from_disk(os.path.join(processed_data_dir, "test"))
     except Exception as e:
@@ -87,7 +87,7 @@ def train_modernbert_kfold(
     lora_config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
-        target_modules=["query", "value"],
+        target_modules=["query", "value", "key", "dense"],
         lora_dropout=lora_dropout,
         bias="none",
         task_type=TaskType.SEQ_CLS,
@@ -97,7 +97,7 @@ def train_modernbert_kfold(
     kf = KFold(n_splits=num_folds, shuffle=True, random_state=seed)
 
     fold_metrics = []
-    tokenizer_for_trainer = AutoTokenizer.from_pretrained(model_name) # Initialize tokenizer once
+    tokenizer_for_trainer = AutoTokenizer.from_pretrained(model_name)
 
     print(f"\nStarting {num_folds}-fold cross-validation...")
     for fold, (train_index, val_index) in enumerate(kf.split(full_train_dataset)):
@@ -118,7 +118,7 @@ def train_modernbert_kfold(
             id2label=id2label,
             label2id=label2id,
             quantization_config=bnb_config,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16, # Using float16 for compatibility
         )
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
@@ -128,7 +128,7 @@ def train_modernbert_kfold(
         os.makedirs(fold_output_dir, exist_ok=True)
 
         training_args = TrainingArguments(
-            output_dir=fold_output_dir, # Output directory for this specific fold
+            output_dir=fold_output_dir,
             num_train_epochs=num_epochs,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
@@ -137,12 +137,14 @@ def train_modernbert_kfold(
             weight_decay=0.01,
             logging_dir=os.path.join(fold_output_dir, "logs"),
             logging_steps=500,
-            evaluation_strategy="epoch", # Evaluate at the end of each epoch for this fold
-            save_strategy="epoch",       # Save checkpoint at the end of each epoch for this fold
-            load_best_model_at_end=True, # Load best model for this fold based on metric
-            metric_for_best_model="f1",  # Use F1-score for best model selection in this fold
+            eval_strategy="epoch",
+            save_strategy="epoch",
+            load_best_model_at_end=True,
+            metric_for_best_model="f1",
             report_to="none",
-            fp16=True if torch.cuda.is_available() else False,
+            # CORRECTED: Set fp16 to False when using bitsandbytes quantization
+            fp16=False,
+            save_total_limit=1,
         )
 
         # Initialize Trainer for the current fold
@@ -150,25 +152,24 @@ def train_modernbert_kfold(
             model=model,
             args=training_args,
             train_dataset=train_subset,
-            eval_dataset=val_subset, # Evaluate on the validation subset of the current fold
+            eval_dataset=val_subset,
             compute_metrics=compute_metrics,
             tokenizer=tokenizer_for_trainer,
-            # No EarlyStoppingCallback here, as per your request
         )
 
         print(f"Starting training for Fold {fold + 1}...")
         trainer.train()
 
-        print(f"Evaluating Fold {fold + 1} on its validation set...")
+        print(f"Evaluating Fold {fold + 1} on its validation set (best model)...")
         eval_results = trainer.evaluate()
         print(f"Fold {fold + 1} Validation Results: {eval_results}")
         fold_metrics.append(eval_results)
 
-        # Optionally save the best model for this fold
-        trainer.save_model(os.path.join(fold_output_dir, "best_model_fold"))
-        trainer.tokenizer.save_pretrained(os.path.join(fold_output_dir, "best_model_fold"))
-        print(f"Best model for Fold {fold + 1} saved to {os.path.join(fold_output_dir, 'best_model_fold')}")
-
+        # Explicitly save the best model for this fold
+        best_model_path = os.path.join(fold_output_dir, "best_model_fold")
+        trainer.save_model(best_model_path)
+        trainer.tokenizer.save_pretrained(best_model_path)
+        print(f"Best model for Fold {fold + 1} saved to {best_model_path}")
 
     print("\n--- K-Fold Cross-Validation Complete ---")
 
@@ -188,17 +189,12 @@ def train_modernbert_kfold(
         print(f"  {metric}: {value:.4f}")
 
     # Save aggregated metrics
+    os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "kfold_average_metrics.json"), "w") as f:
         json.dump(avg_metrics, f, indent=4)
     print(f"Average K-Fold metrics saved to {os.path.join(output_dir, 'kfold_average_metrics.json')}")
 
-    print("\nEvaluating the test set with the best model from the *last* fold (or load a specific best model if desired).")
-    # For a robust final test evaluation, you might re-load the best model from the *best performing fold*
-    # based on the aggregated metrics, or retrain on the full train+dev set.
-    # For simplicity, here we'll use the model from the last fold or you can load a specific one.
-    print("Note: For final production, consider retraining on the entire merged dataset or selecting the best fold's model.")
-    # Here, we'll just evaluate using the model instance that was trained in the *last* fold.
-    # If you want to use the truly "best" model from all folds, you'd need to save and reload it.
+    print("\nEvaluating the test set with the best model from the *last* fold.")
     final_model_path = os.path.join(output_dir, f"fold_{num_folds}", "best_model_fold")
     if os.path.exists(final_model_path):
         print(f"Loading best model from the last fold ({final_model_path}) for final test evaluation...")
@@ -208,12 +204,8 @@ def train_modernbert_kfold(
             id2label=id2label,
             label2id=label2id,
             quantization_config=bnb_config,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16,
         )
-        # Apply PEFT if the loaded model is a PEFT model
-        # For simplicity, assuming the saved model structure includes PEFT adapter
-        # If not, you might need to load base model and then load adapter.
-        # model_for_test = PeftModel.from_pretrained(model_for_test, final_model_path) # if using PeftModel directly
         
         test_trainer = Trainer(
             model=model_for_test,
@@ -221,7 +213,7 @@ def train_modernbert_kfold(
                 output_dir=os.path.join(output_dir, "final_test_evaluation"),
                 per_device_eval_batch_size=batch_size,
                 report_to="none",
-                fp16=True if torch.cuda.is_available() else False,
+                fp16=False, # Keep false for consistency with bitsandbytes during test evaluation
             ),
             eval_dataset=test_dataset,
             compute_metrics=compute_metrics,
@@ -256,9 +248,9 @@ if __name__ == "__main__":
                         help="LoRA alpha parameter.")
     parser.add_argument("--lora_dropout", type=float, default=0.1,
                         help="LoRA dropout rate.")
-    parser.add_argument("--num_folds", type=int, default=5, # Default to 5 folds
+    parser.add_argument("--num_folds", type=int, default=5,
                         help="Number of folds for k-fold cross-validation.")
-    parser.add_argument("--seed", type=int, default=42, # For reproducibility
+    parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for k-fold shuffling.")
     args = parser.parse_args()
 
@@ -272,6 +264,6 @@ if __name__ == "__main__":
         lora_r=args.lora_r,
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
-        num_folds=args.num_folds, # Pass the new parameter
-        seed=args.seed, # Pass the new parameter
+        num_folds=args.num_folds,
+        seed=args.seed,
     )
