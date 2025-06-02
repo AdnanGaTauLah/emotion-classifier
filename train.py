@@ -8,8 +8,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     Trainer,
-    TrainingArguments,
-    EarlyStoppingCallback
+    TrainingArguments
 )
 from datasets import load_from_disk
 import argparse
@@ -116,7 +115,8 @@ def train():
             report_to="none",  # Disable W&B
             run_name=f"fold-{fold}-{datetime.now().strftime('%Y-%m-%d_%H-%M')}",
             push_to_hub=args.push_to_hub,
-            hub_model_id=f"{args.model_name}-meld-fold-{fold}"
+            hub_model_id=f"{args.model_name}-meld-fold-{fold}",
+            save_total_limit=1  # Only keep the best model
         )
 
         global trainer
@@ -125,8 +125,7 @@ def train():
             args=training_args,
             train_dataset=fold_train,
             eval_dataset=fold_val,
-            compute_metrics=compute_metrics_builder(metrics_log, fold),
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=EARLY_STOPPING_PATIENCE)]
+            compute_metrics=compute_metrics_builder(metrics_log, fold)
         )
 
         trainer.train()
