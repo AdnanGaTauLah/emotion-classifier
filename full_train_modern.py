@@ -1,4 +1,4 @@
-# train_full_model_single_run.py
+# full_train_modern.py (Updated for fp16 RuntimeError fix)
 import argparse
 import json
 import os
@@ -33,12 +33,12 @@ def compute_metrics(p):
 
 def train_modernbert_single_run(
     model_name: str = "answerdotai/ModernBERT-large",
-    processed_data_dir: str = "./processed_data_kfold", # Data from preprocess_kfold
-    output_dir: str = "./model_output_single_run_full_capacity", # New output directory
+    processed_data_dir: str = "./processed_data_kfold",
+    output_dir: str = "./model_output_single_run_full_capacity",
     num_epochs: int = 1,
-    batch_size: int = 2,  # IMPORTANT: Very small batch size recommended for full model
+    batch_size: int = 2,
     learning_rate: float = 2e-5,
-    seed: int = 42 # Still useful for reproducibility of weights/shuffling
+    seed: int = 42
 ):
     """
     Trains the full ModernBERT-large model for emotion classification in a single run
@@ -46,10 +46,9 @@ def train_modernbert_single_run(
     """
     print(f"Loading processed data from {processed_data_dir}...")
     try:
-        # full_train_dataset is now the main training set
         train_dataset = load_from_disk(os.path.join(processed_data_dir, "train"))
-        eval_dataset = load_from_disk(os.path.join(processed_data_dir, "test")) # Use test as evaluation during training
-        test_dataset = load_from_disk(os.path.join(processed_data_dir, "test")) # Separate for final eval
+        eval_dataset = load_from_disk(os.path.join(processed_data_dir, "test"))
+        test_dataset = load_from_disk(os.path.join(processed_data_dir, "test"))
     except Exception as e:
         print(f"Error loading processed datasets. Make sure '{processed_data_dir}' contains 'train' and 'test' directories.")
         print(f"Did you run preprocess.py (for k-fold) first? Error: {e}")
@@ -75,14 +74,14 @@ def train_modernbert_single_run(
         num_labels=num_labels,
         id2label=id2label,
         label2id=label2id,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else None, # Explicitly use FP16 on GPU
+        # torch_dtype=torch.float16 if torch.cuda.is_available() else None, # This will be managed by fp16=False
     )
 
     # Set up training arguments for a single run
-    os.makedirs(output_dir, exist_ok=True) # Ensure main output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
     training_args = TrainingArguments(
-        output_dir=output_dir, # Output directly to the main directory
+        output_dir=output_dir,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
@@ -91,14 +90,15 @@ def train_modernbert_single_run(
         weight_decay=0.01,
         logging_dir=os.path.join(output_dir, "logs"),
         logging_steps=500,
-        eval_strategy="epoch", # Evaluate at the end of each epoch on eval_dataset
-        save_strategy="epoch", # Save checkpoint at the end of each epoch
-        load_best_model_at_end=True, # Load the best model based on evaluation metric
-        metric_for_best_model="f1",  # Use F1-score to determine the best model
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
+        metric_for_best_model="f1",
         report_to="none",
-        fp16=True if torch.cuda.is_available() else False, # Enable mixed precision if CUDA is available
-        save_total_limit=1, # Save only the best model
-        seed=seed, # Set seed for reproducibility
+        # CORRECTED: Set fp16 to False to disable PyTorch's native GradScaler
+        fp16=False,
+        save_total_limit=1,
+        seed=seed,
     )
 
     tokenizer_for_trainer = AutoTokenizer.from_pretrained(model_name)
@@ -107,8 +107,8 @@ def train_modernbert_single_run(
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset, # The entire merged train+dev dataset
-        eval_dataset=eval_dataset,   # The test dataset, used for evaluation during training
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         compute_metrics=compute_metrics,
         tokenizer=tokenizer_for_trainer,
     )
@@ -117,8 +117,7 @@ def train_modernbert_single_run(
     trainer.train()
 
     print("Training finished. Evaluating the best model on the test set (final evaluation)...")
-    # The best model from training is automatically loaded if load_best_model_at_end=True
-    final_test_results = trainer.evaluate(test_dataset) # Use the separate test_dataset for final evaluation
+    final_test_results = trainer.evaluate(test_dataset)
     print(f"\nFinal Test Set Evaluation Results: {final_test_results}")
 
     # Save final results
